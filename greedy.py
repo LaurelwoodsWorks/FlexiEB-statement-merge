@@ -18,7 +18,7 @@ FRAGMENTS: Final[int] = 4
 CONSIST: Final[int] = 5
 BENEFIT: Final[int] = 6
 
-# -----------------------------------------------------
+# ----------------------------------------------------------------
 
 # For load
 def to_array(s: str) -> list:
@@ -192,158 +192,155 @@ def update(info: dict, merged_statements: list[str], merge_statement: str) -> No
         search_and_delete(row[CONSUMER_STATEMENTS])
 
 
-def search(info: dict, history: list) -> None:
-    # NOTE: {statement} plays a role as consumer
+def get_candidate_list(info: dict) -> list:
+    # Sort candidate statements by expected benefits in descending order
+    candidates_list = []
     for statement, row in info.items():
+        # NOTE: statement is consumer
 
-        # When have no producer statements
-        if len(row[PRODUCER_STATEMENTS]) == 0: continue   
-        
-
-        # Recursively search on all of the producer statements
-        for producer_statement in row[PRODUCER_STATEMENTS]:
-            producer_statement = str(producer_statement)
-            merge_statement, merge_row = merge(info, producer_statement, statement)
-            # print(k, m)
-
-
-            # When satisfied the rule
-            if merge_statement is not None:
-                # Update info
-                updated_info = deepcopy(info)
-
-                updated_info[merge_statement] = merge_row
-                update(updated_info, [producer_statement, statement], merge_statement)
-                # print(updated_info)
-
-
-                # Write on history
-                tmp = {}
-                tmp["update"] = merge_statement
-                tmp["result"] = updated_info
-                tmp["total_benefit"] = compute_total_benefit(updated_info)
-                tmp["next"] = []
-                history.append(tmp)
+        if len(row[CONSUMER_STATEMENTS]) > 0: 
+            # If statement is merge statement, 
+            # also consider existing benefit
+            if len(row) > 5:
+                expected_benefit = row[RESULT_SIZE] + row[BENEFIT]
+            else:
+                expected_benefit = row[RESULT_SIZE]
                 
-                
-                # Recursively proceed search
-                # NOTE: Terminal condition is 
-                # when there is no producer statement. 
-                search(updated_info, tmp["next"])
-
-
-
-def is_duplicated(target_list: list, target_row: dict) -> bool:
-    '''
-    {target_list} : list of statement info for check duplicate
-    {target_row} : target row for check
-    '''
-    statements = list(target_row.keys())
-
-    for l_row in target_list:
-        l_statements = list(l_row.keys())
-
-        if len(l_statements) != len(statements):
-            continue
-        
-        matched = True
-        for l, s in zip(sorted(l_statements), sorted(statements)):  # Are statements info already sorted for sure?
-            if l != s:
-                matched = False
-                break
-        
-        if matched: return True
+            candidates_list.append([statement, expected_benefit])
     
-    return False
+    # Sort candidates by expected benefits in descending order 
+    candidates_list = sorted(candidates_list, key=lambda x: -x[1]) 
+
+    return candidates_list
 
 
 
-def categorically_extract_terminal_node(tree: dict, result: dict[str, list]) -> None:
+def search(info: dict):
     '''
-    Return a dict 
-        key: total_benefit
-        value: list of statements info
-    '''
-    if len(tree['next']) == 0:
-        if tree['total_benefit'] not in result:
-            result[tree['total_benefit']] = []
-        
-        if len(result[tree['total_benefit']]) < 0 or \
-            (not is_duplicated(result[tree['total_benefit']], tree['result'])):
-            result[tree['total_benefit']].append(tree['result'])
+    Inner loop 
+        for merging target statement with current largest expected benefit.
+
+        {exhuasted_inner} is False
+        when target statement was failed to merge (e.g. not passing rules).
     
-    for subtree in tree['next']:
-        categorically_extract_terminal_node(subtree, result)
+    Outer loop 
+        for when target statement was failed to merge
+        proceed on statement with next largest expected benefit.
+
+        {skip_outer} 
+            True
+                when greedy merged statement,
+                thus no need to further iterate over other candidates
+            False 
+                when all the candidates are failed to merge
+    '''
+
+    # Get candidates list
+    candidates_list = get_candidate_list(info)
+    
+    skip_outer = False
+    
+    # Outer loop for iterating over candidates
+    for producer_statement, _ in candidates_list:
+        target_row = info[producer_statement]
+        
+        exhuasted_inner = False
+        updated_info = None
+        
+        # Inner loop for merging
+        for consumer_statement in target_row[CONSUMER_STATEMENTS]:             
+            # Merge
+            merge_statement, merge_row = merge(info, producer_statement, consumer_statement)
+
+            # When failed to satisfy the rules
+            if merge_statement is None: continue
+
+            # Update
+            updated_info = deepcopy(info)
+
+            update(updated_info, [producer_statement, consumer_statement], merge_statement)
+            updated_info[merge_statement] = merge_row
+
+            exhuasted_inner = True
+
+            # from pprint import pprint
+            # pprint(updated_info)
+            # print("\n#--------------------------------------------------\n")
+            break
+        
+        # When Inner loop ends with mergeing,
+        # end Outer loop
+        if exhuasted_inner: 
+            skip_outer = True            
+            break
+    
+    if skip_outer: 
+        search(updated_info) # type:ignore
+    else: 
+        # print("\n# @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n")
+        # print(info)
+        return info
 
 
-def save(target_list: list, total_benefit: int, procedure: str, path: str="output/es") -> None:
+
+def save(target_info: dict, total_benefit: int, procedure: str, path: str="output/greedy") -> None:
     COLUMNS = ['Procedure', 'Statement', 'producer statement', 'consumer statement',
                 'cost', 'result size', 'Fragment', "consist", "benefit"]
     
-    path = os.path.join(path, str(total_benefit))
     os.makedirs(path)
-    for i, category in enumerate(target_list):  
-        with open(os.path.join(path, f"{i}.csv"), "w") as c:
-            writer = csv.writer(c)            
-            writer.writerow(COLUMNS)
 
-            for statement in category:
-                
-                producer_statement = to_string(category[statement][PRODUCER_STATEMENTS])
-                consumer_statement = to_string(category[statement][CONSUMER_STATEMENTS])
-                cost = category[statement][COST]
-                result_size = category[statement][RESULT_SIZE]
-                fragments = to_string(category[statement][FRAGMENTS])
+    with open(os.path.join(path, f"{total_benefit}.csv"), "w") as c:
+        writer = csv.writer(c)            
+        writer.writerow(COLUMNS)
 
-                if len(category[statement]) > 5:
-                    consist = to_string(category[statement][CONSIST])
-                    benefit = category[statement][BENEFIT]
-                else:
-                    consist = None
-                    benefit = None
+        for statement, row in target_info.items():
+            
+            producer_statement = to_string(row[PRODUCER_STATEMENTS])
+            consumer_statement = to_string(row[CONSUMER_STATEMENTS])
+            cost = row[COST]
+            result_size = row[RESULT_SIZE]
+            fragments = to_string(row[FRAGMENTS])
 
-                row = [
-                    procedure,
-                    statement,
-                    producer_statement,
-                    consumer_statement,
-                    cost,
-                    result_size,
-                    fragments,
-                    consist,
-                    benefit
-                ]
-                writer.writerow(row)
+            if len(row) > 5:
+                consist = to_string(row[CONSIST])
+                benefit = row[BENEFIT]
+            else:
+                consist = None
+                benefit = None
 
-
+            result_row = [
+                procedure,
+                statement,
+                producer_statement,
+                consumer_statement,
+                cost,
+                result_size,
+                fragments,
+                consist,
+                benefit
+            ]
+            writer.writerow(result_row)
 
 
-def main():
+
+
+def main(): 
     original = load("Statement-Infomation.csv")
+    result = search(original)
 
-    search_result = {}
-    search_result["next"] = []
-    search(original, search_result["next"])
-
-    result = {}
-    categorically_extract_terminal_node(search_result, result)
-
-    # Sort resulting statements info list with total_benefit in descending order
-    result = dict(sorted(result.items(), reverse=True))
-
-    best_benefit = next(iter(result))
-    best_benefit_list = result[best_benefit]
-
-    # save(best_benefit_list, best_benefit, "5")
+    # result_ =  {
+    #     '25': [[], ['EB-27-29-33', 'EB-28-30', 'EB-31-32'], 0.061239, 99090, ['88', '95', '96', '97', '101', '102', '103', '87']], 
+    #     '26': [[], ['EB-27-29-33', 'EB-28-30', 'EB-31-32'], 0.045698, 73049, ['30', '24']], 
+    #     '34': [['EB-27-29-33'], ['35'], 1.182939, 555294969, []], 
+    #     '35': [['34'], [], 0.407706, 1, []], 
+    #     'EB-27-29-33': [['25', '26', 'EB-28-30', 'EB-31-32'], ['34'], 0.47387, 569596, ['18', '17', '15', '16', '1', '4'], ['27', '29', '33'], 3069238], 
+    #     'EB-28-30': [['25', '26'], ['EB-27-29-33'], 0.23311700000000002, 135789, ['150', '149', '147', '148', '125', '128'], ['28', '30'], 1441548], 
+    #     'EB-31-32': [['25', '26'], ['EB-27-29-33'], 0.235688, 56139, ['186', '211', '210', '208', '209', '190'], ['31', '32'], 719384]
+    # }
+    # save(result_, compute_total_benefit(result_), "5")
 
 if __name__ == "__main__":
-    # main()    
-
-    # Unknown error:
-    # Exception which doesn't occur in normal operation occurs in timeit. 
-    # import timeit
-    # t = timeit.timeit(main)
-    # print(t)
+    # main()
 
     import time
     t = time.time()

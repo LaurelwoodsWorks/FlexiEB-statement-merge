@@ -115,12 +115,28 @@ def merge(info: dict, producer_key: str, consumer_key: str) -> Tuple[None, None]
 
 
     # Compute producer_statements and consumer_statements
-    producer_statements = p[PRODUCER_STATEMENTS] + c[PRODUCER_STATEMENTS]
-    producer_statements.remove(producer_key)    
+    '''
+    NOTE: producer/consumer_statements MUST have unique statements.
+    c.f. When both producer and consumer have the same statements in producer/consumer_statements list.
+    
+    This is done by using set().
+    '''
+    # Remove keys in producer statements
+    producer_statements = list(set(p[PRODUCER_STATEMENTS] + c[PRODUCER_STATEMENTS]))
+
+    producer_statements.remove(producer_key)
+    if consumer_key in producer_statements:
+        producer_statements.remove(consumer_key)
+
     if producer_statements is None: producer_statements = []
 
-    consumer_statements = p[CONSUMER_STATEMENTS] + c[CONSUMER_STATEMENTS]
+    # Remove keys in consumer statements
+    consumer_statements = list(set(p[CONSUMER_STATEMENTS] + c[CONSUMER_STATEMENTS]))
+
     consumer_statements.remove(consumer_key)
+    if producer_key in consumer_statements:
+        consumer_statements.remove(producer_key)
+
     if consumer_statements is None: consumer_statements = []
 
 
@@ -205,6 +221,8 @@ def search(info: dict, history: list) -> None:
             producer_statement = str(producer_statement)
             merge_statement, merge_row = merge(info, producer_statement, statement)
             # print(k, m)
+            # if merge_statement == "EB-26-26-30-30-32-32-33-33":
+            #     print(merge_row)
 
 
             # When satisfied the rule
@@ -213,7 +231,7 @@ def search(info: dict, history: list) -> None:
                 updated_info = deepcopy(info)
 
                 updated_info[merge_statement] = merge_row
-                update(updated_info, [producer_statement, statement], merge_statement)
+                update(updated_info, [producer_statement, statement], merge_statement)                
                 # print(updated_info)
 
 
@@ -339,14 +357,25 @@ def main():
 if __name__ == "__main__":
     # main()    
 
-    # Unknown error:
-    # Exception which doesn't occur in normal operation occurs in timeit. 
     # import timeit
-    # t = timeit.timeit(main)
+    # t = timeit.repeat(main, repeat=2, number=1)
     # print(t)
 
+    # with open("analysis/es_benchmark.txt", "w") as f:
+    #     for b in t:
+    #         f.write(str(t))
+    #         f.write("\n")
+
     import time
-    t = time.time()
-    main()
-    result = time.time() - t
-    print(result)
+    benchmark = []
+    for i in range(5):
+        t = time.time()
+        main()
+        result = time.time() - t
+        print(result)
+        benchmark.append(result)
+
+    with open("analysis/es_benchmark.txt", "w") as f:
+        for b in benchmark:
+            f.write(str(b))
+            f.write("\n")

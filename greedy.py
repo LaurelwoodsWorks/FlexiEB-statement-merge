@@ -115,12 +115,28 @@ def merge(info: dict, producer_key: str, consumer_key: str) -> Tuple[None, None]
 
 
     # Compute producer_statements and consumer_statements
-    producer_statements = p[PRODUCER_STATEMENTS] + c[PRODUCER_STATEMENTS]
-    producer_statements.remove(producer_key)    
+    '''
+    NOTE: producer/consumer_statements MUST have unique statements.
+    c.f. When both producer and consumer have the same statements in producer/consumer_statements list.
+    
+    This is done by using set().
+    '''
+    # Remove keys in producer statements
+    producer_statements = list(set(p[PRODUCER_STATEMENTS] + c[PRODUCER_STATEMENTS]))
+
+    producer_statements.remove(producer_key)
+    if consumer_key in producer_statements:
+        producer_statements.remove(consumer_key)
+
     if producer_statements is None: producer_statements = []
 
-    consumer_statements = p[CONSUMER_STATEMENTS] + c[CONSUMER_STATEMENTS]
+    # Remove keys in consumer statements
+    consumer_statements = list(set(p[CONSUMER_STATEMENTS] + c[CONSUMER_STATEMENTS]))
+
     consumer_statements.remove(consumer_key)
+    if producer_key in consumer_statements:
+        consumer_statements.remove(producer_key)
+
     if consumer_statements is None: consumer_statements = []
 
 
@@ -343,7 +359,22 @@ if __name__ == "__main__":
     # main()
 
     import time
-    t = time.time()
-    main()
-    result = time.time() - t
-    print(result)
+
+    NUM_TEST = 10
+    result = []
+
+    for i in range(NUM_TEST):
+        t = time.time()
+        main()
+        r = time.time() - t
+        print(r)
+        result.append(r)
+
+    # import timeit
+    # t = timeit.repeat(main, number=100)
+    # print(t)
+
+    with open("analysis/greedy_benchmark.txt", "w") as f:
+        for b in result:
+            f.write(str(b))
+            f.write("\n")

@@ -5,208 +5,9 @@ from copy import deepcopy
 import os
 from typing import Final, Tuple
 
+from common import *
 
-TOTAL_COST_SUM = 0          # For (temporary) A computation (obtained below)
-TOTAL_NUM_FRAGMENTS = 0     # For (temporary) B computation #243
-
-# Row Indices
-PRODUCER_STATEMENTS: Final[int] = 0
-CONSUMER_STATEMENTS: Final[int] = 1
-COST: Final[int] = 2
-RESULT_SIZE: Final[int] = 3
-FRAGMENTS: Final[int] = 4
-CONSIST: Final[int] = 5
-BENEFIT: Final[int] = 6
-
-# ----------------------------------------------------------------
-
-# For load
-def to_array(s: str) -> list:
-    s = s.replace(r'{', '')
-    s = s.replace(r'}', '')
-    s = s.replace(r' ', '')    
-
-    if s == '': return []
-
-    # return list(map(int,s.split(',')))
-    return s.split(',')
-
-# For save
-def to_string(s: list) -> str:
-    if len(s) == 0: 
-        row = r"{}"
-    else: 
-        row = r"{" + " ,".join(s) + r"}"
-    return row
-
-
-
-def load(csv_path: str) -> dict:
-    original = {}
-    original_df = pd.read_csv(csv_path)
-
-    global TOTAL_COST_SUM
-    global TOTAL_NUM_FRAGMENTS
-
-    for i in range(len(original_df)):
-        row = original_df.loc[i]
-
-        # NOTE: Procedure is skipped in this algorithm
-        tmp = []
-        tmp.append(to_array(row[2]))    # producer statement	
-        tmp.append(to_array(row[3]))    # consumer statement	
-        tmp.append(row[4])              # cost	
-        tmp.append(row[5])              # result size
-
-        fragments = to_array(row[6])
-        tmp.append(fragments)
-        # tmp.append(row[0])              # Procedure
-        
-        original[str(row[1])] = tmp     # Statement
-
-        TOTAL_COST_SUM += row[4]                #type:ignore
-        TOTAL_NUM_FRAGMENTS += len(fragments)   #type:ignore
-    return original
-
-
-
-def rule_A(cost: int) -> bool:
-    global TOTAL_COST_SUM
-    if cost > TOTAL_COST_SUM/4: return False    # type: ignore
-    else: return True
-
-def rule_B(fragments: list) -> bool:
-    global TOTAL_NUM_FRAGMENTS
-    if len(fragments) > TOTAL_NUM_FRAGMENTS/4: return False # type: ignore
-    else: return True
-
-
-def compute_total_benefit(info: dict):
-    '''
-    Compute total benefit of current statements.
-
-    Used for computing {rule_A}.
-    '''
-    total_benefit = 0
-    for statement in info:
-        row = info[statement]
-
-        if len(row) > 5:
-            total_benefit += row[BENEFIT]
-    
-    return total_benefit
-
-
-def merge(info: dict, producer_key: str, consumer_key: str) -> Tuple[None, None]|Tuple[str, list]:
-    '''
-    Merge producer and consumer.
-    '''
-    p = info[producer_key]
-    c = info[consumer_key]
-
-
-    # Compute part of merged info for determination
-    cost = p[COST] + c[COST]
-    fragments = p[FRAGMENTS] + c[FRAGMENTS]
-
-
-    # Determine whether to merge using rules.
-    if not(rule_A(cost) and rule_B(fragments)): return None, None
-
-
-    # Compute producer_statements and consumer_statements
-    '''
-    NOTE: producer/consumer_statements MUST have unique statements.
-    c.f. When both producer and consumer have the same statements in producer/consumer_statements list.
-    
-    This is done by using set().
-    '''
-    # Remove keys in producer statements
-    producer_statements = list(set(p[PRODUCER_STATEMENTS] + c[PRODUCER_STATEMENTS]))
-
-    producer_statements.remove(producer_key)
-    if consumer_key in producer_statements:
-        producer_statements.remove(consumer_key)
-
-    if producer_statements is None: producer_statements = []
-
-    # Remove keys in consumer statements
-    consumer_statements = list(set(p[CONSUMER_STATEMENTS] + c[CONSUMER_STATEMENTS]))
-
-    consumer_statements.remove(consumer_key)
-    if producer_key in consumer_statements:
-        consumer_statements.remove(producer_key)
-
-    if consumer_statements is None: consumer_statements = []
-
-
-    # Compute result_size, consist, benefit
-    result_size = c[RESULT_SIZE]  #p[3] + c[3]
-    consist = []
-    benefit = p[RESULT_SIZE]
-
-    # If producer statement is merged one, then inherit it.
-    if len(p) > 5:  
-        result_size += p[RESULT_SIZE]
-        consist.extend(p[CONSIST])
-        benefit += p[BENEFIT]
-    else:
-        consist.append(producer_key)
-        
-
-    # If consumer statement is merged one, then inherit it.
-    if len(c) > 5: consist.extend(c[CONSIST])
-    else: consist.append(consumer_key)
-
-    consist = sorted(consist)   # for visual
-
-
-    # Pack the result
-    merge_row = [
-        producer_statements,
-        consumer_statements,
-        cost,
-        result_size,
-        fragments,
-        consist,
-        benefit
-    ]
-
-
-    # Make new statement
-    merge_statement = "EB-" + "-".join(map(str, list(consist)))
-
-    return merge_statement, merge_row
-
-
-def update(info: dict, merged_statements: list[str], merge_statement: str) -> None:
-    '''
-    Inplace function
-    '''
-    
-    # Delete merged statements
-    for merged_key in merged_statements:
-        del info[merged_key]
-
-    # Propagate update
-    # i.e. Replace merged statements in other statements' producer/consumer list 
-    # with merged statements
-    for statement in info:
-        row = info[statement]
-
-        def search_and_delete(array: list):
-            deleted = False
-            for i in reversed(range(len(array))):
-                if array[i] in merged_statements:
-                    del array[i]
-                    deleted = True
-                    
-                    
-            if deleted: array.append(merge_statement)
-        
-        search_and_delete(row[PRODUCER_STATEMENTS])
-        search_and_delete(row[CONSUMER_STATEMENTS])
-
+RESULT = None
 
 def get_candidate_list(info: dict) -> list:
     # Sort candidate statements by expected benefits in descending order
@@ -295,69 +96,56 @@ def search(info: dict):
     else: 
         # print("\n# @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n")
         # print(info)
-        return info
+        global RESULT
+        RESULT = info
+        # return info
 
 
+def save(target_info: dict, total_benefit: int, procedure: str, info_name: str) -> None:   
+    rows = [] 
+    for statement, row in target_info.items():
+        
+        producer_statement = to_string(row[PRODUCER_STATEMENTS])
+        consumer_statement = to_string(row[CONSUMER_STATEMENTS])
+        cost = row[COST]
+        result_size = row[RESULT_SIZE]
+        fragments = to_string(row[FRAGMENTS])
 
-def save(target_info: dict, total_benefit: int, procedure: str, path: str="output/greedy") -> None:
-    COLUMNS = ['Procedure', 'Statement', 'producer statement', 'consumer statement',
-                'cost', 'result size', 'Fragment', "consist", "benefit"]
-    
-    os.makedirs(path)
+        if len(row) > 5:
+            consist = to_string(row[CONSIST])
+            benefit = row[BENEFIT]
+        else:
+            consist = None
+            benefit = None
 
-    with open(os.path.join(path, f"{total_benefit}.csv"), "w") as c:
-        writer = csv.writer(c)            
-        writer.writerow(COLUMNS)
-
-        for statement, row in target_info.items():
-            
-            producer_statement = to_string(row[PRODUCER_STATEMENTS])
-            consumer_statement = to_string(row[CONSUMER_STATEMENTS])
-            cost = row[COST]
-            result_size = row[RESULT_SIZE]
-            fragments = to_string(row[FRAGMENTS])
-
-            if len(row) > 5:
-                consist = to_string(row[CONSIST])
-                benefit = row[BENEFIT]
-            else:
-                consist = None
-                benefit = None
-
-            result_row = [
-                procedure,
-                statement,
-                producer_statement,
-                consumer_statement,
-                cost,
-                result_size,
-                fragments,
-                consist,
-                benefit
-            ]
-            writer.writerow(result_row)
+        result_row = [
+            procedure,
+            statement,
+            producer_statement,
+            consumer_statement,
+            cost,
+            result_size,
+            fragments,
+            consist,
+            benefit
+        ]
+        rows.append(result_row)
+        
+    save_csv(rows, str(total_benefit), info_name, "greedy")
 
 
 
 
-def main(): 
-    original = load("Statement-Infomation.csv")
-    result = search(original)
+def main(name: str):     
+    # original = load(os.path.join("input", name + ".csv"))
+    original = load(os.path.join("input", "Statement-Information_1", name + ".csv"))
+    # result = search(original)
+    search(original)
 
-    # result_ =  {
-    #     '25': [[], ['EB-27-29-33', 'EB-28-30', 'EB-31-32'], 0.061239, 99090, ['88', '95', '96', '97', '101', '102', '103', '87']], 
-    #     '26': [[], ['EB-27-29-33', 'EB-28-30', 'EB-31-32'], 0.045698, 73049, ['30', '24']], 
-    #     '34': [['EB-27-29-33'], ['35'], 1.182939, 555294969, []], 
-    #     '35': [['34'], [], 0.407706, 1, []], 
-    #     'EB-27-29-33': [['25', '26', 'EB-28-30', 'EB-31-32'], ['34'], 0.47387, 569596, ['18', '17', '15', '16', '1', '4'], ['27', '29', '33'], 3069238], 
-    #     'EB-28-30': [['25', '26'], ['EB-27-29-33'], 0.23311700000000002, 135789, ['150', '149', '147', '148', '125', '128'], ['28', '30'], 1441548], 
-    #     'EB-31-32': [['25', '26'], ['EB-27-29-33'], 0.235688, 56139, ['186', '211', '210', '208', '209', '190'], ['31', '32'], 719384]
-    # }
-    # save(result_, compute_total_benefit(result_), "5")
+    save(RESULT, compute_total_benefit(RESULT), "10", name)  # type:ignore
 
-if __name__ == "__main__":
-    # main()
 
+def benchmark():
     import time
 
     NUM_TEST = 10
@@ -378,3 +166,18 @@ if __name__ == "__main__":
         for b in result:
             f.write(str(b))
             f.write("\n")
+
+
+
+
+if __name__ == "__main__":
+    # name = "Procedure-10"
+    # main(name)
+
+    i = 1
+    name = "Procedure-" + str(i)
+    original = load(os.path.join("input", "Statement-Information_1", name + ".csv"))
+    search(original)
+    print(RESULT)
+
+    # save(RESULT, compute_total_benefit(RESULT), str(i), name)  # type:ignore

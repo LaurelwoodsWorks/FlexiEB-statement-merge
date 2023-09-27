@@ -1,0 +1,30 @@
+\documentclass[a4paper]{article}
+
+\usepackage{algorithm}
+\usepackage{arevmath}     % For math symbols
+\usepackage[noend]{algpseudocode}
+
+
+\begin{document}
+
+\begin{algorithm}
+\caption{Update statement list}
+\begin{algorithmic}
+
+\Procedure{Update}{$statement\_list$}
+    \State Remove Producer/Consumer statements from statement list
+    \\
+    \For {statements in statement list}
+        \State Remove Producer statement from Producer statement list
+        \State Remove Consumer statement from Consumer statement list
+    \EndFor
+    \\
+    \Return Updated statement list
+
+\EndProcedure
+
+\end{algorithmic}
+\end{algorithm}
+
+
+\end{document}

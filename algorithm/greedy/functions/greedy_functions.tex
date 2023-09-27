@@ -1,0 +1,57 @@
+\documentclass{article}
+\usepackage{xcolor}
+\usepackage[linesnumbered,ruled,vlined]{algorithm2e}
+
+
+%%% Coloring the comment as blue
+\newcommand\mycommfont[1]{\footnotesize\ttfamily\textcolor{blue}{#1}}
+\SetCommentSty{mycommfont}
+
+\begin{document}
+
+\begin{algorithm}[H]
+    \SetKwInput{KwInput}{Input}                % Set the Input
+    \SetKwInput{KwOutput}{Output}              % set the Output
+    \DontPrintSemicolon
+      
+      \KwInput{Your Input}
+      \KwOutput{Your output}
+      \KwData{Testing set $x$}
+    
+    % Set Function Names
+      \SetKwFunction{FMain}{Main}
+      \SetKwFunction{FSum}{Sum}
+      \SetKwFunction{FSub}{Sub}
+     
+    % Write Function with word ``Function''
+      \SetKwProg{Fn}{Function}{:}{}
+      \Fn{\FSum{$first$, $second$}}{
+            a = first\;
+            b = second\;
+            sum = first + second\;
+            \KwRet sum\;
+      }
+      \;
+    
+    % Write Function with word ``Def''
+      \SetKwProg{Fn}{Def}{:}{}
+      \Fn{\FSub{$first$, $second$}}{
+            a = first\;
+            b = second\;
+            sum = first - second\;
+            \KwRet sum\;
+      }
+      \;
+    
+      \SetKwProg{Fn}{Function}{:}{\KwRet}
+      \Fn{\FMain}{
+            a = 5\;
+            b = 10\;
+            Sum(5, 10)\;
+            Sub(5, 10)\;
+            print Sum, Sub\;
+            \KwRet 0\;
+      }
+\end{algorithm}
+
+\end{document}

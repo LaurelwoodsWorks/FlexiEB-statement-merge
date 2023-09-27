@@ -1,0 +1,42 @@
+\documentclass[a4paper]{article}
+
+\usepackage{algorithm}
+\usepackage{arevmath}     % For math symbols
+\usepackage[noend]{algpseudocode}
+
+
+\begin{document}
+
+\begin{algorithm}
+\caption{Greedy algorithm}
+\begin{algorithmic}[1]
+
+\Procedure{Search}{$statement\_list$}
+    \State Extract Candidate statements from statement list
+    \\
+    \For{Candidate statements}  \Comment{Become Producer statement}
+        \For{Candidate statement's Consumer statements}
+            \If{Pass Rules}
+                \State Merge
+                \State Update statement list
+                \State Break loop
+            \EndIf
+        \EndFor
+        \\
+        \If {Merge is performed}
+            \State Break loop
+        \EndIf
+    \EndFor
+    \\
+    \If{No Merge}
+        \Return statement list
+    \Else
+        \State Recursively call Search
+    \EndIf
+\EndProcedure
+
+\end{algorithmic}
+\end{algorithm}
+
+
+\end{document}

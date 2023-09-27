@@ -1,0 +1,32 @@
+\documentclass[a4paper]{article}
+
+\usepackage{algorithm}
+\usepackage{arevmath}     % For math symbols
+\usepackage[noend]{algpseudocode}
+
+
+\begin{document}
+
+\begin{algorithm}
+\caption{Get Candidate list}
+\begin{algorithmic}[1]
+
+\Procedure{Get Candidate list}{$statement\_list$}
+    \For{Statements in Statement list}    \Comment{Become Producer statement}
+        \If{Statement is Merged statement}
+            \State Benefit = Result size + Benefit     \Comment{Existing benefit from merge}
+        \Else
+            \State Benefit = Result size
+        \EndIf
+    \EndFor
+    \\
+    \State Descendingly sort statement list w.r.t. Benefit
+    \\
+    \Return Sorted statement list
+\EndProcedure
+
+\end{algorithmic}
+\end{algorithm}
+
+
+\end{document}

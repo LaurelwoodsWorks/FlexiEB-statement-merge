@@ -1,0 +1,41 @@
+\documentclass[a4paper]{article}
+
+\usepackage{algorithm}
+\usepackage{arevmath}     % For math symbols
+\usepackage[noend]{algpseudocode}
+
+
+\begin{document}
+
+\begin{algorithm}
+\caption{Merge statements}
+\begin{algorithmic}
+
+\Procedure{Merge}{$consumer\_statement, producer\_statement$}
+    \State Create a new statement, Merged statement
+    \\
+    \State Producer statement list = Union of Producer statements of both statements
+    \State Remove Producer statement from Producer statement list
+    \\
+    \State Consumer statement list = Union of Consumer statements of both statements
+    \State Remove Consumer statement from Consumer statement list
+    \\
+    \State Result size = Consumer statement's Result size
+    \State Benefit = Producer statement's Result size
+    \State Consist = [Consumer\_statement, Producer\_statement]
+    \\
+    \If{Producer/Consumer statements are Merge statement}        
+        \State Inherit results from previous merge
+    \EndIf
+    \\
+    \State Put results into Merged statement
+    \\
+    \Return Merged statement
+
+\EndProcedure
+
+\end{algorithmic}
+\end{algorithm}
+
+
+\end{document}

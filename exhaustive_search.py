@@ -8,7 +8,6 @@ from typing import Final, Tuple
 from common import *
 
 
-
 def search(info: dict, history: list) -> None:
     # NOTE: {statement} plays a role as consumer
     for statement, row in info.items():

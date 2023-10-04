@@ -174,10 +174,19 @@ if __name__ == "__main__":
     # name = "Procedure-10"
     # main(name)
 
-    i = 1
-    name = "Procedure-" + str(i)
-    original = load(os.path.join("input", "Statement-Information_1", name + ".csv"))
-    search(original)
-    print(RESULT)
+    fragment_name = "Fragment-Information.csv"
 
-    # save(RESULT, compute_total_benefit(RESULT), str(i), name)  # type:ignore
+    name = "Experiment1"
+
+    # i = 3
+    for i in range(1, 7):
+        statement_filename = "Procedure-" + str(i)
+        
+        statement_path = os.path.join("input", name, statement_filename + ".csv")
+        fragment_path = os.path.join("input", fragment_name)
+
+        original = load(statement_path, fragment_path)
+        search(original)
+        # print(RESULT)
+
+        save(RESULT, compute_total_benefit(RESULT), str(i), statement_filename)  # type:ignore

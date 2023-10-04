@@ -9,6 +9,7 @@ from typing import Final, Tuple
 
 TOTAL_COST_SUM = 0          # For (temporary) A computation (obtained below)
 TOTAL_NUM_FRAGMENTS = 0     # For (temporary) B computation #243
+FRAGMENTS_INFO = {}
 
 # Row Indices
 PRODUCER_STATEMENTS: Final[int] = 0
@@ -44,12 +45,18 @@ def to_string(s: list) -> str:
     return row
 
 
-def load(csv_path: str) -> dict:
+def load(csv_path: str, fragment_path: str) -> dict:
     original = {}
     original_df = pd.read_csv(csv_path)
+    fragments_info = pd.read_csv(fragment_path)
 
     global TOTAL_COST_SUM
     global TOTAL_NUM_FRAGMENTS
+    global FRAGMENTS_INFO
+
+    for _, fragment in fragments_info.iterrows():
+        FRAGMENTS_INFO[str(fragment["N"])] = int(fragment["byte"])
+    
 
     for i in range(len(original_df)):
         row = original_df.loc[i]
@@ -68,7 +75,11 @@ def load(csv_path: str) -> dict:
         original[str(row[1])] = tmp     # Statement
 
         TOTAL_COST_SUM += row[4]                #type:ignore
-        TOTAL_NUM_FRAGMENTS += len(fragments)   #type:ignore
+
+        for fragment in fragments:
+            TOTAL_NUM_FRAGMENTS += FRAGMENTS_INFO[fragment]
+
+        # TOTAL_NUM_FRAGMENTS += len(fragments)   #type:ignore
     return original
 
 
@@ -91,14 +102,22 @@ def save_csv(data: list, file_name: str, info_name: str, path: str, default_path
 # -----------------------------------------------------
 # Logics
 
-def rule_A(cost: int) -> bool:
+def rule_A(cost: int|float) -> bool:
     global TOTAL_COST_SUM
-    if cost > TOTAL_COST_SUM/4: return False    # type: ignore
+    if cost > TOTAL_COST_SUM/4*3: return False    # type: ignore
     else: return True
 
+# def rule_B(fragments: list) -> bool:
+#     global TOTAL_NUM_FRAGMENTS
+#     if len(fragments) > TOTAL_NUM_FRAGMENTS/4: return False # type: ignore
+#     else: return True
+
+
 def rule_B(fragments: list) -> bool:
-    global TOTAL_NUM_FRAGMENTS
-    if len(fragments) > TOTAL_NUM_FRAGMENTS/4: return False # type: ignore
+    global TOTAL_NUM_FRAGMENTS, FRAGMENTS_INFO
+    
+    fragment_size = sum([FRAGMENTS_INFO[fragment] for fragment in fragments])
+    if fragment_size > TOTAL_NUM_FRAGMENTS/4: return False # type: ignore
     else: return True
 
 

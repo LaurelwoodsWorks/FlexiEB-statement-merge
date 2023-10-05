@@ -1,28 +1,41 @@
+"""
+NOTE: Due to arbitrary format of statement_info and fragment_info,
+it is user's responsibility to match up the format. 
+
+Format (Columns) of statement_info:
+    Procedure
+    Statement
+    Procedure statement
+    Consumer statement
+    Cost
+    Total data size
+    Fragments
+
+For fragment_info,
+manually specify the index of the columns required. 
+
+"""
+
 import pandas as pd
-import csv
-from copy import deepcopy
+from typing import Tuple, Final
 import os
-from typing import Final, Tuple
+import csv
 
-# -----------------------------------------------------
-# Constants
-
-TOTAL_COST_SUM = 0          # For (temporary) A computation (obtained below)
-TOTAL_NUM_FRAGMENTS = 0     # For (temporary) B computation #243
-FRAGMENTS_INFO = {}
+"""
+NOTE: To ease porting into c++, 
+use list instead of datatypes (e.g. namedtuple)
+"""
 
 # Row Indices
 PRODUCER_STATEMENTS: Final[int] = 0
 CONSUMER_STATEMENTS: Final[int] = 1
 COST: Final[int] = 2
-RESULT_SIZE: Final[int] = 3
+TOTAL_DATA_SIZE: Final[int] = 3
 FRAGMENTS: Final[int] = 4
 CONSIST: Final[int] = 5
 BENEFIT: Final[int] = 6
 
 
-# -----------------------------------------------------
-# Helper functions
 
 # For load
 def to_array(s: str) -> list:
@@ -45,207 +58,151 @@ def to_string(s: list) -> str:
     return row
 
 
-def load(csv_path: str, fragment_path: str) -> dict:
-    original = {}
-    original_df = pd.read_csv(csv_path)
-    fragments_info = pd.read_csv(fragment_path)
+def load_data(path: str) -> pd.DataFrame:
+    # Simple data loader
 
-    global TOTAL_COST_SUM
-    global TOTAL_NUM_FRAGMENTS
-    global FRAGMENTS_INFO
-
-    for _, fragment in fragments_info.iterrows():
-        FRAGMENTS_INFO[str(fragment["N"])] = int(fragment["byte"])
+    if path[-5:] == ".xlsx":
+        data = pd.read_excel(path)
+    elif path[-4:] == ".csv":
+        data = pd.read_csv(path)
+    else:
+        raise Exception("Data file must be either xlsx or csv.")
     
+    return data
 
-    for i in range(len(original_df)):
-        row = original_df.loc[i]
 
-        # NOTE: Procedure is skipped in this algorithm
-        tmp = []
-        tmp.append(to_array(row[2]))    # producer statement	
-        tmp.append(to_array(row[3]))    # consumer statement	
-        tmp.append(row[4])              # cost	
-        tmp.append(row[5])              # result size
+def preprocess_statements_info(raw_statements_info: pd.DataFrame, fragments_info: dict)->list:
+    """
+    Preprocess statements information 
+    and split by procedures.
 
-        fragments = to_array(row[6])
-        tmp.append(fragments)
-        # tmp.append(row[0])              # Procedure
+    Output: (Tuple) (procedure index, procedure) 
+
+    NOTE: Procedures and Statements are treated as string
+    because they are used in formatting (e.g. EB-2-4-7).
+    """
+
+    procedures = []
+    current_procedure_index = None
+    current_procedure = {}
+    for row in raw_statements_info.values.tolist():
+        # Initialize
+        if current_procedure_index is None:
+            current_procedure_index = row[0]
         
-        original[str(row[1])] = tmp     # Statement
+        # Split when meeting new procedure_index
+        if len(current_procedure) > 0 and current_procedure_index != row[0]:
+            procedures.append((current_procedure_index, current_procedure))
+            current_procedure = {}
+            current_procedure_index = row[0]
 
-        TOTAL_COST_SUM += row[4]                #type:ignore
+        current_row = []
 
+        current_row.append(to_array(row[2]))    # producer statements
+        current_row.append(to_array(row[3]))    # consumer statements
+        current_row.append(float(row[4]))     # cost
+        current_row.append(int(row[5]))     # total data size
+        
+        fragments = to_array(row[6])
+        current_row.append(fragments)    # fragments
+
+        # Compute fragments size
+        fragment_size = 0
         for fragment in fragments:
-            TOTAL_NUM_FRAGMENTS += FRAGMENTS_INFO[fragment]
+            fragment_size += fragments_info[fragment]
+        current_row.append(fragment_size)
 
-        # TOTAL_NUM_FRAGMENTS += len(fragments)   #type:ignore
-    return original
-
-
-def save_csv(data: list, file_name: str, info_name: str, path: str, default_path: str="output") -> None:
-    COLUMNS = ['Procedure', 'Statement', 'producer statement', 'consumer statement',
-                'cost', 'result size', 'Fragment', "consist", "benefit"]
+        current_procedure[str(row[1])] = current_row
     
-    path = os.path.join(default_path, info_name, path)
+    return procedures
+
+
+def preprocess_fragments_info(raw_fragments_info: pd.DataFrame, 
+                              fragment_col_index: int, 
+                              size_col_index: int) -> dict:
+    """
+    Preprocess statement information 
+    and split by procedures.
+    """
+
+    fragments = {}
+    for row in raw_fragments_info.values.tolist():
+        fragments[str(row[fragment_col_index])] = int(row[size_col_index])
+
+    return fragments
+
+
+def load(statement_path: str, 
+         fragment_path: str,
+         fragment_col_index: int,
+         size_col_index: int,
+         path_prefix="input/") -> Tuple[list, dict]:
+    raw_statements_info = load_data(path_prefix + statement_path)
+    raw_fragments_info = load_data(path_prefix + fragment_path)
+
+    fragments_info = preprocess_fragments_info(raw_fragments_info, fragment_col_index, size_col_index)
+    procedures_list = preprocess_statements_info(raw_statements_info, fragments_info)
+
+    return procedures_list, fragments_info
+
+
+def serialize(procedure: dict, procedure_index: str) -> list:
+    print(procedure)
+    serialized_procedure = [] 
+    for statement, row in procedure.items():
+        
+        producer_statement = to_string(row[PRODUCER_STATEMENTS])
+        consumer_statement = to_string(row[CONSUMER_STATEMENTS])
+        cost = row[COST]
+        total_data_size = row[TOTAL_DATA_SIZE]
+        fragments = to_string(row[FRAGMENTS])
+
+        if len(row) > 6:
+            consist = to_string(row[CONSIST])
+            benefit = row[BENEFIT]
+        else:
+            consist = None
+            benefit = None
+
+        result_row = [
+            procedure_index,
+            statement,
+            producer_statement,
+            consumer_statement,
+            cost,
+            total_data_size,
+            fragments,
+            consist,
+            benefit
+        ]
+        serialized_procedure.append(result_row)
+
+    return serialized_procedure
+
+
+def save(serialized_procedure: list, procedure_name: str, file_name: str, path="output"):
+    COLUMNS = ['Procedure', 'Statement', 'producer statement', 'consumer statement',
+            'cost', 'result size', 'Fragment', "consist", "benefit"]
+    
+    if procedure_name[-5:] == ".xlsx":
+        name = procedure_name[:-5]
+    else: # == ".csv"
+        name = procedure_name[:-4]
+
+    path = os.path.join(path, name)
     if not os.path.exists(path):
         os.makedirs(path)
-    
-    with open(os.path.join(path, f"{file_name}.csv"), "w") as f:
+
+    with open(os.path.join(path, file_name + ".csv"), "w") as f:
         writer = csv.writer(f)
         writer.writerow(COLUMNS)
 
-        for d in data:
-            writer.writerow(d)
+        for s in serialized_procedure:
+            writer.writerow(s)
 
 
-# -----------------------------------------------------
-# Logics
+if __name__ == '__main__':
+    STATEMENT_INFO_PATH = "input/Experiment1.xlsx"
+    FRAGMENTS_INFO_PATH = "input/Fragment Information.xlsx"
 
-def rule_A(cost: int|float) -> bool:
-    global TOTAL_COST_SUM
-    if cost > TOTAL_COST_SUM/4*3: return False    # type: ignore
-    else: return True
-
-# def rule_B(fragments: list) -> bool:
-#     global TOTAL_NUM_FRAGMENTS
-#     if len(fragments) > TOTAL_NUM_FRAGMENTS/4: return False # type: ignore
-#     else: return True
-
-
-def rule_B(fragments: list) -> bool:
-    global TOTAL_NUM_FRAGMENTS, FRAGMENTS_INFO
-    
-    fragment_size = sum([FRAGMENTS_INFO[fragment] for fragment in fragments])
-    if fragment_size > TOTAL_NUM_FRAGMENTS/4: return False # type: ignore
-    else: return True
-
-
-def compute_total_benefit(info: dict):
-    '''
-    Compute total benefit of current statements.
-
-    Used for computing {rule_A}.
-    '''
-    total_benefit = 0
-    for statement in info:
-        row = info[statement]
-
-        if len(row) > 5:
-            total_benefit += row[BENEFIT]
-    
-    return total_benefit
-
-
-def merge(info: dict, producer_key: str, consumer_key: str) -> Tuple[None, None]|Tuple[str, list]:
-    '''
-    Merge producer and consumer.
-    '''
-    p = info[producer_key]
-    c = info[consumer_key]
-
-
-    # Compute part of merged info for determination
-    cost = p[COST] + c[COST]
-    fragments = p[FRAGMENTS] + c[FRAGMENTS]
-
-
-    # Determine whether to merge using rules.
-    if not(rule_A(cost) and rule_B(fragments)): return None, None
-
-
-    # Compute producer_statements and consumer_statements
-    '''
-    NOTE: producer/consumer_statements MUST have unique statements.
-    c.f. When both producer and consumer have the same statements in producer/consumer_statements list.
-    
-    This is done by using set().
-    '''
-    # Remove keys in producer statements
-    producer_statements = list(set(p[PRODUCER_STATEMENTS] + c[PRODUCER_STATEMENTS]))
-
-    producer_statements.remove(producer_key)
-    if consumer_key in producer_statements:
-        producer_statements.remove(consumer_key)
-
-    if producer_statements is None: producer_statements = []
-
-    # Remove keys in consumer statements
-    consumer_statements = list(set(p[CONSUMER_STATEMENTS] + c[CONSUMER_STATEMENTS]))
-
-    consumer_statements.remove(consumer_key)
-    if producer_key in consumer_statements:
-        consumer_statements.remove(producer_key)
-
-    if consumer_statements is None: consumer_statements = []
-
-
-    # Compute result_size, consist, benefit
-    result_size = c[RESULT_SIZE]  #p[3] + c[3]
-    consist = []
-    benefit = p[RESULT_SIZE]
-
-    # If producer statement is merged one, then inherit it.
-    if len(p) > 5:  
-        result_size += p[RESULT_SIZE]
-        consist.extend(p[CONSIST])
-        benefit += p[BENEFIT]
-    else:
-        consist.append(producer_key)
-        
-
-    # If consumer statement is merged one, then inherit it.
-    if len(c) > 5: consist.extend(c[CONSIST])
-    else: consist.append(consumer_key)
-
-    consist = sorted(consist)   # for visual
-
-
-    # Pack the result
-    merge_row = [
-        producer_statements,
-        consumer_statements,
-        cost,
-        result_size,
-        fragments,
-        consist,
-        benefit
-    ]
-
-
-    # Make new statement
-    merge_statement = "EB-" + "-".join(map(str, list(consist)))
-
-    return merge_statement, merge_row
-
-
-def update(info: dict, merged_statements: list[str], merge_statement: str) -> None:
-    '''
-    Inplace function
-    '''
-    
-    # Delete merged statements
-    for merged_key in merged_statements:
-        del info[merged_key]
-
-    # Propagate update
-    # i.e. Replace merged statements in other statements' producer/consumer list 
-    # with merged statements
-    for statement in info:
-        row = info[statement]
-
-        def search_and_delete(array: list):
-            deleted = False
-            for i in reversed(range(len(array))):
-                if array[i] in merged_statements:
-                    del array[i]
-                    deleted = True
-                    
-                    
-            if deleted: array.append(merge_statement)
-        
-        search_and_delete(row[PRODUCER_STATEMENTS])
-        search_and_delete(row[CONSUMER_STATEMENTS])
-
-
-    
+    print(load(STATEMENT_INFO_PATH, FRAGMENTS_INFO_PATH, 0, 6))
